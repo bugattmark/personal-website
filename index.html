@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>letters to myself.</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -54,6 +56,26 @@
             color: #1a1a1a;
             white-space: pre-wrap;
             word-wrap: break-word;
+        }
+
+        .entry a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .entry a:hover {
+            text-decoration: underline;
+        }
+
+        .entry .math-block {
+            display: block;
+            text-align: center;
+            margin: 10px 0;
+            white-space: normal;
+        }
+
+        .entry .math-inline {
+            white-space: normal;
         }
 
         .entry-time {
@@ -223,6 +245,47 @@
                 return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             }
 
+            // Parse text for links, math, and preserve emojis
+            function parseText(text) {
+                // First escape HTML
+                let result = escapeHtml(text);
+
+                // Parse block math $$...$$ first
+                result = result.replace(/\$\$([^$]+)\$\$/g, function(match, math) {
+                    try {
+                        return '<span class="math-block">' + katex.renderToString(math, { displayMode: true, throwOnError: false }) + '</span>';
+                    } catch (e) {
+                        return match;
+                    }
+                });
+
+                // Parse inline math $...$
+                result = result.replace(/\$([^$]+)\$/g, function(match, math) {
+                    try {
+                        return '<span class="math-inline">' + katex.renderToString(math, { displayMode: false, throwOnError: false }) + '</span>';
+                    } catch (e) {
+                        return match;
+                    }
+                });
+
+                // Parse links (text)[url]
+                result = result.replace(/\(([^)]+)\)\[([^\]]+)\]/g, function(match, text, url) {
+                    // Basic URL validation
+                    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
+                        return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+                    }
+                    return '<a href="https://' + url + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+                });
+
+                return result;
+            }
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
             async function loadEntries() {
                 const { data, error } = await supabase
                     .from('entries')
@@ -248,7 +311,7 @@
                             <button onclick="deleteEntry(${entry.id})">delete</button>
                         </div>
                         <div class="entry-time">${entry.time}</div>
-                        <div class="entry" id="entry-text-${index}">${escapeHtml(entry.text)}</div>
+                        <div class="entry" id="entry-text-${index}">${parseText(entry.text)}</div>
                         <textarea class="entry-edit" id="entry-edit-${index}">${entry.text}</textarea>
                     `;
                     container.appendChild(block);
@@ -258,12 +321,6 @@
                     divider.style.marginTop = '20px';
                     container.appendChild(divider);
                 });
-            }
-
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
             }
 
             async function saveEntry(text) {
